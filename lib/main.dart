@@ -10,7 +10,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const MaterialApp(
-      debugShowCheckedModeBanner: false, // Removes the debug banner
+      debugShowCheckedModeBanner: false,
       home: BookingCalendarPage(),
     );
   }
@@ -26,15 +26,17 @@ class BookingCalendarPage extends StatefulWidget {
 class _BookingCalendarPageState extends State<BookingCalendarPage> {
   int year = 2024;
   int month = 10; // Start with October
+  int? selectedDay;
 
-  // Get the first day of the month and weekday name
-  String getFirstDayOfMonth(int year, int month) {
-    DateTime firstDay = DateTime(year, month, 1);
-    List<String> weekdays = [
-      "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
-    ];
-    return weekdays[firstDay.weekday - 1];
-  }
+  final TextEditingController dateController = TextEditingController();
+  final TextEditingController eventController = TextEditingController();
+
+  // Mock data for bookings
+  final Map<String, List<String>> bookings = {
+    "2024-10-15": ["10:00 AM - John Doe", "2:00 PM - Jane Smith"],
+    "2024-10-18": ["11:30 AM - Alice Brown"],
+    "2024-10-20": ["1:00 PM - Bob Johnson", "3:00 PM - Clara Davis"],
+  };
 
   void incrementMonth() {
     setState(() {
@@ -44,6 +46,7 @@ class _BookingCalendarPageState extends State<BookingCalendarPage> {
       } else {
         month += 1;
       }
+      selectedDay = null;
     });
   }
 
@@ -55,18 +58,104 @@ class _BookingCalendarPageState extends State<BookingCalendarPage> {
       } else {
         month -= 1;
       }
+      selectedDay = null;
     });
+  }
+
+  void jumpToDate(String input) {
+    try {
+      final DateTime date = DateTime.parse(input);
+      setState(() {
+        year = date.year;
+        month = date.month;
+        selectedDay = date.day;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Invalid date format. Please use YYYY-MM-DD."),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void showBookings(BuildContext context, int day) {
+    final dateKey = "$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}";
+    final dayBookings = bookings[dateKey] ?? ["No bookings available"];
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text("Bookings for $dateKey"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...dayBookings.map(
+                    (booking) => Text(booking, style: const TextStyle(fontSize: 16)),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  addBooking(context, dateKey);
+                },
+                child: const Text("Add Booking"),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text("Close"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void addBooking(BuildContext context, String dateKey) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text("Add Booking for $dateKey"),
+          content: TextField(
+            controller: eventController,
+            decoration: const InputDecoration(hintText: "Enter booking details"),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  bookings.putIfAbsent(dateKey, () => []);
+                  bookings[dateKey]!.add(eventController.text);
+                  eventController.clear();
+                });
+                Navigator.pop(context);
+              },
+              child: const Text("Save"),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    String firstDay = getFirstDayOfMonth(year, month);
-
-    // Get the number of days in the month
     int daysInMonth = DateTime(year, month + 1, 0).day;
-
-    // Calculate the starting position for the first day of the month
-    int firstDayIndex = getFirstDayOfMonth(year, month) == 'Sunday' ? 0 : (DateTime(year, month, 1).weekday - 1);
+    int firstDayIndex = DateTime(year, month, 1).weekday % 7;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -75,7 +164,28 @@ class _BookingCalendarPageState extends State<BookingCalendarPage> {
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              // Title & Calendar
+              // Search Bar
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: dateController,
+                      decoration: InputDecoration(
+                        labelText: "Search Date (YYYY-MM-DD)",
+                        border: OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.search),
+                          onPressed: () {
+                            jumpToDate(dateController.text);
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Calendar Header
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
@@ -110,7 +220,7 @@ class _BookingCalendarPageState extends State<BookingCalendarPage> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    // Days of the Week Row with Purple Background
+                    // Days of the Week Row
                     Container(
                       color: Colors.purple,
                       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -128,35 +238,44 @@ class _BookingCalendarPageState extends State<BookingCalendarPage> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // Calendar Grid with Borders and White Background
+                    // Calendar Grid
                     GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: daysInMonth + firstDayIndex, // Total cells (empty + days)
+                      itemCount: daysInMonth + firstDayIndex,
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 7,
                         childAspectRatio: 1.2,
                       ),
                       itemBuilder: (context, index) {
                         final day = (index >= firstDayIndex) ? index - firstDayIndex + 1 : null;
-                        final isWeekend = index % 7 == 0 || index % 7 == 6; // Sunday or Saturday
 
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            border: Border.all(color: Colors.grey),
-                          ),
-                          child: Center(
-                            child: day != null
-                                ? Text(
-                              '$day',
-                              style: TextStyle(
-                                color: isWeekend ? Colors.red : Colors.black,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            )
-                                : const SizedBox.shrink(), // Empty box for placeholders
+                        return GestureDetector(
+                          onTap: day != null
+                              ? () {
+                            setState(() {
+                              selectedDay = day;
+                            });
+                            showBookings(context, day);
+                          }
+                              : null,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: day == selectedDay ? Colors.green[100] : Colors.white,
+                              border: Border.all(color: Colors.grey),
+                            ),
+                            child: Center(
+                              child: day != null
+                                  ? Text(
+                                '$day',
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                                  : const SizedBox.shrink(),
+                            ),
                           ),
                         );
                       },
@@ -165,7 +284,7 @@ class _BookingCalendarPageState extends State<BookingCalendarPage> {
                 ),
               ),
               const SizedBox(height: 16),
-              // Navigation and Search with Icon
+              // Navigation Buttons
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -173,47 +292,9 @@ class _BookingCalendarPageState extends State<BookingCalendarPage> {
                     icon: const Icon(Icons.arrow_back_ios),
                     onPressed: decrementMonth,
                   ),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                    ),
-                    onPressed: () {},
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 24.0),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.search, size: 18),
-                          SizedBox(width: 8),
-                          Text('CARIAN', style: TextStyle(fontSize: 16)),
-                        ],
-                      ),
-                    ),
-                  ),
                   IconButton(
                     icon: const Icon(Icons.arrow_forward_ios),
                     onPressed: incrementMonth,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Legend
-              const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Column(
-                    children: [
-                      Text('BOOKED', style: TextStyle(fontSize: 14)),
-                      Text('8 DAYS', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  Column(
-                    children: [
-                      Text('AVAILABLE', style: TextStyle(fontSize: 14)),
-                      Text('23 DAYS', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    ],
                   ),
                 ],
               ),
@@ -223,9 +304,8 @@ class _BookingCalendarPageState extends State<BookingCalendarPage> {
       ),
     );
   }
-}
 
-// Define month names for easy reference
-const List<String> monthNames = [
-  "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"
-];
+  static const List<String> monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+}
